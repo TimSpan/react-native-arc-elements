@@ -1,7 +1,17 @@
 // FormItem.tsx
 import { Text, View } from "react-native";
 
-export const FormItem = ({ name, label, errorMessage, children }) => {
+export const FormItem = ({
+  name,
+  label,
+  errorMessage,
+  children,
+}: {
+  name: string;
+  label?: string;
+  errorMessage?: string;
+  children: React.ReactNode;
+}) => {
   // const {
   //   formState: { errors },
   // } = useFormContext();

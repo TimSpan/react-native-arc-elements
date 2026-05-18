@@ -4,7 +4,15 @@ import { FormProvider, useForm } from "react-hook-form";
 import { View } from "react-native";
 import { SubmitContext } from "../hooks";
 
-export const Form = ({ children, defaultValues, onSubmit }) => {
+export const Form = ({
+  children,
+  defaultValues,
+  onSubmit,
+}: {
+  children: React.ReactNode;
+  defaultValues?: any;
+  onSubmit: (data: any) => void;
+}) => {
   const methods = useForm({
     defaultValues,
   });
