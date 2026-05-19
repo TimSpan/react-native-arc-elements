@@ -5,92 +5,70 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 
 const {height} = Dimensions.get('window');
 
-export type Precision = 'year' | 'month' | 'day' | 'hour' | 'minute' | 'second';
-
-interface Props {
-  visible: boolean;
-  value?: Date;
-  precision?: Precision;
-  minDate?: Date;
-  maxDate?: Date;
-  onCancel: () => void;
-  onConfirm: (date: Date) => void;
-}
-
 const ITEM_HEIGHT = 40;
 const VISIBLE_COUNT = 5;
 
-const PRECISION_ORDER: Precision[] = ['year', 'month', 'day', 'hour', 'minute', 'second'];
+type Precision = 'year' | 'month' | 'day' | 'hour' | 'minute' | 'second';
 
-function getColumns(precision: Precision) {
-  const endIndex = PRECISION_ORDER.indexOf(precision);
-  return PRECISION_ORDER.slice(0, endIndex + 1);
-}
+const ORDER: Precision[] = ['year', 'month', 'day', 'hour', 'minute', 'second'];
 
-function range(start: number, end: number) {
+const range = (start: number, end: number) => {
   const arr: number[] = [];
   for (let i = start; i <= end; i++) arr.push(i);
   return arr;
-}
+};
 
-function getDays(year: number, month: number) {
-  return dayjs(`${year}-${month}`).daysInMonth();
-}
+const getDays = (y: number, m: number) => dayjs(`${y}-${m}`).daysInMonth();
 
-function WheelColumn({list, value, onChange}: any) {
+function Wheel({data, value, onChange}: any) {
   const ref = useRef<FlatList>(null);
+  const indexRef = useRef(0);
+
+  const index = useMemo(() => data.findIndex((i: number) => i === value), [data, value]);
 
   useEffect(() => {
-    const index = list.findIndex((i: number) => i === value);
-    if (index >= 0) {
+    if (index >= 0 && index !== indexRef.current) {
+      indexRef.current = index;
       ref.current?.scrollToOffset({
         offset: index * ITEM_HEIGHT,
         animated: false,
       });
     }
-  }, [list, value]);
+  }, [index]);
 
-  const onScrollEnd = (e: any) => {
-    const offsetY = e.nativeEvent.contentOffset.y;
-    const index = Math.round(offsetY / ITEM_HEIGHT);
-    const val = list[index];
-    if (val !== undefined) onChange(val);
+  const handleEnd = (e: any) => {
+    let i = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
+
+    if (i < 0) i = 0;
+    if (i > data.length - 1) i = data.length - 1;
+
+    indexRef.current = i;
+    onChange(data[i]);
   };
 
   return (
-    <View
-      style={{
-        height: ITEM_HEIGHT * VISIBLE_COUNT,
-        overflow: 'hidden',
-        minWidth: 50,
-        alignItems: 'center',
-      }}
-    >
+    <View style={{height: ITEM_HEIGHT * VISIBLE_COUNT, overflow: 'hidden'}}>
       <FlatList
         ref={ref}
-        data={list}
-        keyExtractor={item => item.toString()}
+        data={data}
+        keyExtractor={i => i.toString()}
         showsVerticalScrollIndicator={false}
         snapToInterval={ITEM_HEIGHT}
-        decelerationRate='normal'
-        onMomentumScrollEnd={onScrollEnd}
-        getItemLayout={(_, index) => ({
+        decelerationRate='fast'
+        onMomentumScrollEnd={handleEnd}
+        getItemLayout={(_, i) => ({
           length: ITEM_HEIGHT,
-          offset: ITEM_HEIGHT * index,
-          index,
+          offset: ITEM_HEIGHT * i,
+          index: i,
         })}
-        contentContainerStyle={{paddingVertical: ITEM_HEIGHT * 2}}
+        contentContainerStyle={{
+          paddingVertical: ITEM_HEIGHT * 2,
+        }}
         renderItem={({item}) => {
-          const selected = item === value;
+          const active = item === value;
           return (
-            <View
-              style={{
-                height: ITEM_HEIGHT,
-                justifyContent: 'center',
-                alignItems: 'center',
-              }}
-            >
-              <Text style={[styles.item, selected && styles.active]}>{item.toString().padStart(2, '0')}</Text>
+            <View style={styles.itemWrap}>
+              <Text style={[styles.item, active && styles.active]}>{item.toString().padStart(2, '0')}</Text>
             </View>
           );
         }}
@@ -99,81 +77,100 @@ function WheelColumn({list, value, onChange}: any) {
   );
 }
 
-export default function ArcDatePikcer({visible, value, precision = 'day', minDate, maxDate, onCancel, onConfirm}: Props) {
-  const columns = useMemo(() => getColumns(precision), [precision]);
+export default function ArcDatePicker({visible, value, precision = 'day', minDate, maxDate, onCancel, onConfirm}: any) {
+  const cols = ORDER.slice(0, ORDER.indexOf(precision) + 1);
 
-  const [inner, setInner] = useState(dayjs(value || new Date()));
+  const d = dayjs(value || new Date());
+
+  const [year, setYear] = useState(d.year());
+  const [month, setMonth] = useState(d.month() + 1);
+  const [day, setDay] = useState(d.date());
+  const [hour, setHour] = useState(d.hour());
+  const [minute, setMinute] = useState(d.minute());
+  const [second, setSecond] = useState(d.second());
 
   useEffect(() => {
     if (visible) {
-      setInner(dayjs(value || new Date()));
+      const d = dayjs(value || new Date());
+      setYear(d.year());
+      setMonth(d.month() + 1);
+      setDay(d.date());
+      setHour(d.hour());
+      setMinute(d.minute());
+      setSecond(d.second());
     }
-  }, [value, visible]);
+  }, [visible, value]);
 
-  const translateY = useSharedValue(height);
-
+  // ✅ 修正 day（只在 month/year 改时）
   useEffect(() => {
-    translateY.value = withTiming(visible ? 0 : height, {duration: 250});
-  }, [translateY, visible]);
+    const max = getDays(year, month);
+    if (day > max) {
+      setDay(max);
+    }
+  }, [year, month]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{translateY: translateY.value}],
-  }));
-
-  const dataMap = {
+  const data = {
     year: range(1970, 2100),
     month: range(1, 12),
-    day: range(1, getDays(inner.year(), inner.month() + 1)),
+    day: range(1, getDays(year, month)),
     hour: range(0, 23),
     minute: range(0, 59),
     second: range(0, 59),
   };
 
-  const setValue = (type: Precision, val: number) => {
-    if (type === 'day') {
-      const maxDay = getDays(inner.year(), inner.month() + 1);
-      if (val < 1 || val > maxDay) {
-        return;
-      }
-    }
+  const buildDate = () => {
+    let d = dayjs()
+      .year(year)
+      .month(month - 1)
+      .date(day)
+      .hour(hour)
+      .minute(minute)
+      .second(second);
 
-    let next = inner.set(type as any, type === 'month' ? val - 1 : val);
+    if (minDate && d.isBefore(minDate)) d = dayjs(minDate);
+    if (maxDate && d.isAfter(maxDate)) d = dayjs(maxDate);
 
-    if (type === 'year' || type === 'month') {
-      const maxDay = getDays(next.year(), next.month() + 1);
-      if (next.date() > maxDay) {
-        next = next.set('date', maxDay);
-      }
-    }
-
-    if (minDate && next.isBefore(dayjs(minDate))) next = dayjs(minDate);
-    if (maxDate && next.isAfter(dayjs(maxDate))) next = dayjs(maxDate);
-
-    setInner(next);
+    return d.toDate();
   };
 
+  const translateY = useSharedValue(height);
+
+  useEffect(() => {
+    translateY.value = withTiming(visible ? 0 : height, {duration: 250});
+  }, [visible]);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{translateY: translateY.value}],
+  }));
+
   return (
-    <Modal transparent visible={visible} animationType='none'>
+    <Modal transparent visible={visible}>
       <View style={styles.mask}>
         <TouchableOpacity style={{flex: 1}} onPress={onCancel} />
 
-        <Animated.View style={[styles.panel, animatedStyle]}>
+        <Animated.View style={[styles.panel, style]}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={onCancel}>
-              <Text style={styles.btn}>取消</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => onConfirm(inner.toDate())}>
-              <Text style={[styles.btn, styles.confirm]}>确定</Text>
-            </TouchableOpacity>
+            <Text onPress={onCancel}>取消</Text>
+            <Text onPress={() => onConfirm(buildDate())}>确定</Text>
           </View>
 
           <View style={styles.body}>
-            {columns.map(type => (
-              <WheelColumn key={type} list={dataMap[type]} value={type === 'month' ? inner.month() + 1 : inner.get(type)} onChange={(val: number) => setValue(type, val)} />
-            ))}
+            {cols.map(c => {
+              const map: any = {
+                year: [year, setYear],
+                month: [month, setMonth],
+                day: [day, setDay],
+                hour: [hour, setHour],
+                minute: [minute, setMinute],
+                second: [second, setSecond],
+              };
+
+              const [val, setter] = map[c];
+
+              return <Wheel key={c} data={data[c]} value={val} onChange={setter} />;
+            })}
           </View>
 
-          {/* 中间高亮 */}
           <View style={styles.indicator} pointerEvents='none' />
         </Animated.View>
       </View>
@@ -182,48 +179,27 @@ export default function ArcDatePikcer({visible, value, precision = 'day', minDat
 }
 
 const styles = StyleSheet.create({
-  mask: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  panel: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-    paddingBottom: 20,
-  },
+  mask: {flex: 1, backgroundColor: 'rgba(0,0,0,0.3)'},
+  panel: {backgroundColor: '#fff'},
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     padding: 16,
   },
-  btn: {
-    fontSize: 16,
-    color: '#666',
+  body: {flexDirection: 'row', justifyContent: 'space-around'},
+  itemWrap: {
+    height: ITEM_HEIGHT,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  confirm: {
-    color: '#1677ff',
-  },
-  body: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 16,
-  },
-  item: {
-    fontSize: 16,
-    color: '#333',
-  },
-  active: {
-    color: '#1677ff',
-    fontWeight: 'bold',
-  },
+  item: {fontSize: 16, color: '#999'},
+  active: {color: '#000', fontWeight: 'bold'},
   indicator: {
     position: 'absolute',
-    top: ITEM_HEIGHT * 2 + 56,
+    top: ITEM_HEIGHT * 2,
+    height: ITEM_HEIGHT,
     left: 0,
     right: 0,
-    height: ITEM_HEIGHT,
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: '#ddd',
